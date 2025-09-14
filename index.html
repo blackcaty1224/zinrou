@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>人狼 勝敗記録アプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: "Arial", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f7f7f7;
+    }
+    header {
+      background: #333;
+      color: #fff;
+      text-align: center;
+      padding: 1rem;
+    }
+    main {
+      padding: 1rem;
+      max-width: 600px;
+      margin: auto;
+    }
+    label {
+      display: block;
+      margin: 0.5rem 0 0.2rem;
+      font-size: 1rem;
+    }
+    select, button {
+      width: 100%;
+      padding: 0.8rem;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+    button {
+      background: #4CAF50;
+      color: #fff;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    .record {
+      background: #fff;
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 1rem 0;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .record p {
+      margin: 0.2rem 0;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>人狼 勝敗記録</h1>
+  </header>
+  <main>
+    <label for="role">役職を選択</label>
+    <select id="role">
+      <option value="村人">村人</option>
+      <option value="人狼">人狼</option>
+      <option value="占い師">占い師</option>
+      <option value="騎士">騎士</option>
+      <option value="霊媒師">霊媒師</option>
+      <option value="狂人">狂人</option>
+      <option value="ハンター">ハンター</option>
+      <option value="妖狐">妖狐</option>
+    </select>
+
+    <label for="result">勝敗を選択</label>
+    <select id="result">
+      <option value="勝ち">勝ち</option>
+      <option value="負け">負け</option>
+    </select>
+
+    <button onclick="addRecord()">記録する</button>
+
+    <h2>記録一覧</h2>
+    <div id="records"></div>
+  </main>
+
+  <script>
+    function addRecord() {
+      const role = document.getElementById("role").value;
+      const result = document.getElementById("result").value;
+      const date = new Date().toLocaleString();
+
+      const recordDiv = document.createElement("div");
+      recordDiv.className = "record";
+      recordDiv.innerHTML = `
+        <p><strong>役職:</strong> ${role}</p>
+        <p><strong>勝敗:</strong> ${result}</p>
+        <p><small>${date}</small></p>
+      `;
+
+      document.getElementById("records").prepend(recordDiv);
+
+      saveData(role, result, date);
+    }
+
+    function saveData(role, result, date) {
+      let data = JSON.parse(localStorage.getItem("records")) || [];
+      data.unshift({ role, result, date });
+      localStorage.setItem("records", JSON.stringify(data));
+    }
+
+    function loadData() {
+      let data = JSON.parse(localStorage.getItem("records")) || [];
+      data.forEach(r => {
+        const recordDiv = document.createElement("div");
+        recordDiv.className = "record";
+        recordDiv.innerHTML = `
+          <p><strong>役職:</strong> ${r.role}</p>
+          <p><strong>勝敗:</strong> ${r.result}</p>
+          <p><small>${r.date}</small></p>
+        `;
+        document.getElementById("records").appendChild(recordDiv);
+      });
+    }
+
+    window.onload = loadData;
+  </script>
+</body>
+</html>
