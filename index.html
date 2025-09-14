@@ -2,131 +2,323 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>人狼 勝敗記録アプリ</title>
+  <title>人狼GM補助ツール</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body {
-      font-family: "Arial", sans-serif;
-      margin: 0;
-      padding: 0;
-      background: #f7f7f7;
-    }
-    header {
-      background: #333;
-      color: #fff;
-      text-align: center;
-      padding: 1rem;
-    }
-    main {
-      padding: 1rem;
-      max-width: 600px;
-      margin: auto;
-    }
-    label {
-      display: block;
-      margin: 0.5rem 0 0.2rem;
-      font-size: 1rem;
-    }
-    select, button {
-      width: 100%;
-      padding: 0.8rem;
-      font-size: 1rem;
-      margin-bottom: 1rem;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
-    button {
-      background: #4CAF50;
-      color: #fff;
-      border: none;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #45a049;
-    }
-    .record {
-      background: #fff;
-      border-radius: 8px;
-      padding: 1rem;
-      margin: 1rem 0;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-    .record p {
-      margin: 0.2rem 0;
-      font-size: 0.9rem;
-    }
+    body { font-family: sans-serif; margin: 10px; background: #f4f4f4; }
+    h1 { font-size: 20px; text-align: center; }
+    .section { margin: 15px 0; padding: 10px; background: #fff; border-radius: 8px; }
+    button { padding: 8px 15px; margin: 5px; border: none; border-radius: 5px; background: #007bff; color: white; }
+    button:disabled { background: gray; }
+    select { padding: 8px; margin: 5px; width: 100%; }
+    .player { padding: 5px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; background: #fafafa; }
+    #log { max-height: 250px; overflow-y: auto; background: #eee; padding: 10px; border-radius: 5px; font-size: 14px; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>人狼 勝敗記録</h1>
-  </header>
-  <main>
-    <label for="role">役職を選択</label>
-    <select id="role">
-      <option value="村人">村人</option>
-      <option value="人狼">人狼</option>
-      <option value="占い師">占い師</option>
-      <option value="騎士">騎士</option>
-      <option value="霊媒師">霊媒師</option>
-      <option value="狂人">狂人</option>
-      <option value="ハンター">ハンター</option>
-      <option value="妖狐">妖狐</option>
-    </select>
+  <h1>人狼GM補助ツール</h1>
 
-    <label for="result">勝敗を選択</label>
-    <select id="result">
-      <option value="勝ち">勝ち</option>
-      <option value="負け">負け</option>
-    </select>
+  <!-- 初期設定 -->
+  <div id="setup" class="section">
+    <h2>初期設定</h2>
+    <label>人数:
+      <select id="playerCount">
+        <option value="6">6人村</option>
+        <option value="7">7人村</option>
+      </select>
+    </label>
+    <label>組分け:
+      <select id="pattern"></select>
+    </label>
+    <button onclick="setRoles()">役職を決定</button>
+  </div>
 
-    <button onclick="addRecord()">記録する</button>
+  <!-- 役職割り当て -->
+  <div id="assign" class="section" style="display:none;">
+    <h2>役職割り当て</h2>
+    <div id="players"></div>
+    <button onclick="confirmRoles()">確認</button>
+  </div>
 
-    <h2>記録一覧</h2>
-    <div id="records"></div>
-  </main>
+  <!-- ゲーム進行 -->
+  <div id="game" class="section" style="display:none;">
+    <h2>ゲーム進行</h2>
+    <div id="log"></div>
+    <button onclick="startDay()">昼のターン</button>
+    <button onclick="startNight()">夜のターン</button>
+    <button onclick="showSelect('処刑者を選択（なし可）', executePlayer, true)">処刑</button>
+    <div id="actions"></div>
+  </div>
 
-  <script>
-    function addRecord() {
-      const role = document.getElementById("role").value;
-      const result = document.getElementById("result").value;
-      const date = new Date().toLocaleString();
+<script>
+const rolePatterns = {
+  6: {
+    "初心者": ["村人","村人","村人","人狼","占い師","騎士"],
+    "中上級": ["村人","村人","人狼","占い師","騎士","狂人"],
+    "アグレッシブ1": ["村人","村人","人狼","占い師","狂人","ハンター"]
+  },
+  7: {
+    "初心者": ["村人","村人","人狼","人狼","占い師","騎士","霊媒師"],
+    "中上級": ["村人","村人","人狼","占い師","騎士","狂人","霊媒師"],
+    "アグレッシブ1": ["村人","人狼","人狼","占い師","騎士","霊媒師","妖狐"],
+    "アグレッシブ2": ["村人","人狼","占い師","狂人","ハンター","妖狐","妖狐"]
+  }
+};
 
-      const recordDiv = document.createElement("div");
-      recordDiv.className = "record";
-      recordDiv.innerHTML = `
-        <p><strong>役職:</strong> ${role}</p>
-        <p><strong>勝敗:</strong> ${result}</p>
-        <p><small>${date}</small></p>
-      `;
+let currentRoles = [];
+let assignedRoles = [];
+let deadPlayers = [];
+let pendingHunter = null;
+let lastExecuted = null;
+let pendingVictim = null;
 
-      document.getElementById("records").prepend(recordDiv);
+document.getElementById("playerCount").addEventListener("change", updatePattern);
+function updatePattern(){
+  let count = document.getElementById("playerCount").value;
+  let patternSel = document.getElementById("pattern");
+  patternSel.innerHTML = "";
+  for (let key in rolePatterns[count]){
+    let opt = document.createElement("option");
+    opt.value = key; opt.textContent = key;
+    patternSel.appendChild(opt);
+  }
+}
+updatePattern();
 
-      saveData(role, result, date);
+function setRoles(){
+  let count = document.getElementById("playerCount").value;
+  let pattern = document.getElementById("pattern").value;
+  currentRoles = [...rolePatterns[count][pattern]];
+  document.getElementById("setup").style.display = "none";
+  document.getElementById("assign").style.display = "block";
+  let container = document.getElementById("players");
+  container.innerHTML = "";
+  currentRoles.forEach((r, i)=>{
+    let div = document.createElement("div");
+    div.className = "player";
+    div.innerHTML = `プレイヤー${i+1}: <button onclick="assignRole(${i})">役職を割り当て</button> <span id="p${i}"></span>`;
+    container.appendChild(div);
+  });
+}
+
+function assignRole(i){
+  if(currentRoles.length===0){ alert("役職はすべて割り当て済みです"); return; }
+  let role = currentRoles.shift();
+  assignedRoles[i] = role;
+  document.getElementById("p"+i).textContent = role;
+}
+
+function confirmRoles(){
+  if(assignedRoles.length===0){ alert("役職を割り当ててください"); return; }
+  document.getElementById("assign").style.display = "none";
+  document.getElementById("game").style.display = "block";
+  log("役職が決定しました。ゲーム開始！");
+}
+
+function log(msg){
+  let logDiv = document.getElementById("log");
+  let p = document.createElement("p");
+  p.textContent = msg;
+  logDiv.appendChild(p);
+  logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+// --- 昼の処理 ---
+function startDay(){
+  log("☀️ 昼のターンです。昨夜の犠牲者を発表してください。");
+  if(pendingHunter!==null){
+    log("ハンターが夜に死亡していました。道連れ対象を選んでください。");
+    showSelect("ハンターの道連れ対象", hunterKill, true);
+    pendingHunter = null;
+  } else {
+    showSelect("犠牲者を選択（なし可）", announceVictim, true);
+  }
+}
+
+function announceVictim(player){
+  if(player !== null){
+    deadPlayers.push(player);
+    log(`昨夜の犠牲者は プレイヤー${player+1} (${assignedRoles[player]}) です。`);
+    checkHunter(player,"attack");
+  } else {
+    log("昨夜の犠牲者はいませんでした。");
+  }
+  checkVictory();
+}
+
+// --- 夜の処理 (人狼→占い師→霊媒師→騎士) ---
+function startNight(){
+  log("🌙 夜のターン開始");
+  processWerewolf();
+}
+
+function processWerewolf(){
+  showSelect("人狼の襲撃対象（なし可）", target=>{
+    if(target!==null){
+      log(`人狼が襲撃対象に選んだのは プレイヤー${target+1}`);
+      pendingVictim = target;
+    } else {
+      log("人狼は襲撃しませんでした。");
+      pendingVictim = null;
     }
+    processSeer();
+  }, true);
+}
 
-    function saveData(role, result, date) {
-      let data = JSON.parse(localStorage.getItem("records")) || [];
-      data.unshift({ role, result, date });
-      localStorage.setItem("records", JSON.stringify(data));
+function processSeer(){
+  const seerIndex = assignedRoles.findIndex(r=>r==="占い師");
+  if(seerIndex!==-1 && !deadPlayers.includes(seerIndex)){
+    showSelect("占い師の占い対象（なし可、自分以外）", target=>{
+      if(target!==null){
+        const role = assignedRoles[target];
+        if(role==="人狼"){
+          log(`🔮 占い師の結果: プレイヤー${target+1} は 人狼です`);
+        } else if(role==="妖狐"){
+          log(`🔮 占い師の結果: プレイヤー${target+1} は 妖狐でした → 占いで死亡！`);
+          deadPlayers.push(target);
+        } else {
+          log(`🔮 占い師の結果: プレイヤー${target+1} は 人狼ではありません`);
+        }
+      } else {
+        log("占い師は占いを行いませんでした。");
+      }
+      processMedium();
+    }, true, seerIndex);
+  } else {
+    processMedium();
+  }
+}
+
+function processMedium(){
+  const medIndex = assignedRoles.findIndex(r=>r==="霊媒師");
+  if(medIndex!==-1 && !deadPlayers.includes(medIndex) && lastExecuted!==null){
+    log("☠️ 霊媒師の能力を使用します。");
+    showSelect("霊媒師の確認（なし可）", ()=>{
+      log(`☠️ 霊媒師の結果: 前日の処刑者 プレイヤー${lastExecuted+1} は ${assignedRoles[lastExecuted]}`);
+      processKnight();
+    }, true);
+  } else {
+    processKnight();
+  }
+}
+
+function processKnight(){
+  const knightIndex = assignedRoles.findIndex(r=>r==="騎士");
+  if(knightIndex!==-1 && !deadPlayers.includes(knightIndex)){
+    showSelect("騎士の護衛対象（なし可、自分以外）", target=>{
+      if(target!==null && pendingVictim===target){
+        log(`🛡 騎士がプレイヤー${target+1}を守ったため襲撃失敗！`);
+        pendingVictim=null;
+      } else if(target!==null){
+        log(`🛡 騎士がプレイヤー${target+1}を守りました`);
+      } else {
+        log("騎士は護衛を行いませんでした");
+      }
+      resolveNight();
+    }, true, knightIndex);
+  } else {
+    resolveNight();
+  }
+}
+
+function resolveNight(){
+  if(pendingVictim!==null){
+    let role = assignedRoles[pendingVictim];
+    if(role==="妖狐"){
+      log(`🦊 襲撃により プレイヤー${pendingVictim+1} は 妖狐でした → 噛まれ無効！`);
+    } else {
+      deadPlayers.push(pendingVictim);
+      log(`💀 襲撃により プレイヤー${pendingVictim+1} (${role}) が死亡しました`);
+      checkHunter(pendingVictim,"attack");
     }
+  }
+  checkVictory();
+}
 
-    function loadData() {
-      let data = JSON.parse(localStorage.getItem("records")) || [];
-      data.forEach(r => {
-        const recordDiv = document.createElement("div");
-        recordDiv.className = "record";
-        recordDiv.innerHTML = `
-          <p><strong>役職:</strong> ${r.role}</p>
-          <p><strong>勝敗:</strong> ${r.result}</p>
-          <p><small>${r.date}</small></p>
-        `;
-        document.getElementById("records").appendChild(recordDiv);
-      });
+// --- 投票と処刑 ---
+function executePlayer(player){
+  if(player !== null){
+    deadPlayers.push(player);
+    lastExecuted = player;
+    log(`⚖️ 処刑されたのは プレイヤー${player+1} (${assignedRoles[player]})`);
+    checkHunter(player,"execution");
+  } else {
+    log("今日は処刑者がいませんでした");
+    lastExecuted=null;
+  }
+  checkVictory();
+}
+
+// --- 共通UI ---
+function showSelect(label, callback, allowNone=false, exclude=null){
+  let actionDiv = document.getElementById("actions");
+  actionDiv.innerHTML = `<p>${label}</p>`;
+  let sel = document.createElement("select");
+  sel.innerHTML = `<option value="">${allowNone?"なし":"選択してください"}</option>`;
+  assignedRoles.forEach((r,i)=>{
+    if(!deadPlayers.includes(i) && i!==exclude){
+      sel.innerHTML += `<option value="${i}">プレイヤー${i+1} (${r})</option>`;
     }
+  });
+  let btn = document.createElement("button");
+  btn.textContent = "決定";
+  btn.onclick = ()=>{
+    let val = sel.value;
+    if(val===""){ callback(null); }
+    else{ callback(parseInt(val)); }
+    actionDiv.innerHTML="";
+  };
+  actionDiv.appendChild(sel);
+  actionDiv.appendChild(btn);
+}
 
-    window.onload = loadData;
-  </script>
+function checkHunter(player,cause){
+  if(assignedRoles[player]==="ハンター"){
+    if(cause==="execution"){
+      log("ハンターが処刑されました。直後に道連れを選択してください。");
+      showSelect("ハンターの道連れ対象", hunterKill);
+    } else if(cause==="attack"){
+      log("ハンターが夜に襲撃されました。翌朝に道連れが発生します。");
+      pendingHunter = player;
+    }
+  }
+}
+
+function hunterKill(target){
+  if(target!==null){
+    deadPlayers.push(target);
+    log(`🎯 ハンターの道連れで プレイヤー${target+1} (${assignedRoles[target]}) が死亡しました。`);
+  } else {
+    log("ハンターは誰も道連れにしませんでした。");
+  }
+  checkVictory();
+}
+
+// --- 勝利判定 ---
+function checkVictory(){
+  let alive = assignedRoles.map((r,i)=>deadPlayers.includes(i)?null:r);
+  let wolves = alive.filter(r=>r==="人狼").length;
+  let foxes  = alive.filter(r=>r==="妖狐").length;
+  let villagers = alive.filter(r=>["村人","占い師","騎士","霊媒師"].includes(r)).length;
+
+  if(foxes>0 && wolves===0 && villagers===0){
+    log("🎉 妖狐陣営の勝利！");
+    endGame(); return;
+  }
+  if(wolves===0){
+    log("🎉 村人陣営の勝利！");
+    endGame(); return;
+  }
+  if(wolves >= villagers){
+    log("🎉 人狼陣営の勝利！");
+    endGame(); return;
+  }
+}
+
+function endGame(){
+  document.getElementById("actions").innerHTML="";
+  document.querySelectorAll("#game button").forEach(b=>b.disabled=true);
+}
+</script>
 </body>
 </html>
