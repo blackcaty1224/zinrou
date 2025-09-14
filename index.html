@@ -1,54 +1,50 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>人狼GM補助ツール</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: sans-serif; margin: 10px; background: #f4f4f4; }
-    h1 { font-size: 20px; text-align: center; }
-    .section { margin: 15px 0; padding: 10px; background: #fff; border-radius: 8px; }
-    button { padding: 8px 15px; margin: 5px; border: none; border-radius: 5px; background: #007bff; color: white; }
-    button:disabled { background: gray; }
-    select { padding: 8px; margin: 5px; width: 100%; }
-    .player { padding: 5px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; background: #fafafa; }
-    #log { max-height: 250px; overflow-y: auto; background: #eee; padding: 10px; border-radius: 5px; font-size: 14px; }
-  </style>
+<meta charset="UTF-8">
+<title>人狼GM補助ツール</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { font-family: sans-serif; margin: 10px; background: #f4f4f4; }
+h1 { font-size: 20px; text-align: center; }
+.section { margin: 15px 0; padding: 10px; background: #fff; border-radius: 8px; }
+button { padding: 8px 15px; margin: 5px; border: none; border-radius: 5px; background: #007bff; color: white; }
+button:disabled { background: gray; }
+select { padding: 8px; margin: 5px; width: 100%; }
+.player { padding: 5px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; background: #fafafa; }
+#log { max-height: 250px; overflow-y: auto; background: #eee; padding: 10px; border-radius: 5px; font-size: 14px; }
+</style>
 </head>
 <body>
-  <h1>人狼GM補助ツール</h1>
+<h1>人狼GM補助ツール</h1>
 
-  <!-- 初期設定 -->
-  <div id="setup" class="section">
-    <h2>初期設定</h2>
-    <label>人数:
-      <select id="playerCount">
-        <option value="6">6人村</option>
-        <option value="7">7人村</option>
-      </select>
-    </label>
-    <label>組分け:
-      <select id="pattern"></select>
-    </label>
-    <button onclick="setRoles()">役職を決定</button>
-  </div>
+<div id="setup" class="section">
+  <h2>初期設定</h2>
+  <label>人数:
+    <select id="playerCount">
+      <option value="6">6人村</option>
+      <option value="7">7人村</option>
+    </select>
+  </label>
+  <label>組分け:
+    <select id="pattern"></select>
+  </label>
+  <button onclick="setRoles()">役職を決定</button>
+</div>
 
-  <!-- 役職割り当て -->
-  <div id="assign" class="section" style="display:none;">
-    <h2>役職割り当て</h2>
-    <div id="players"></div>
-    <button onclick="confirmRoles()">確認</button>
-  </div>
+<div id="assign" class="section" style="display:none;">
+  <h2>役職割り当て</h2>
+  <div id="players"></div>
+  <button onclick="confirmRoles()">確認</button>
+</div>
 
-  <!-- ゲーム進行 -->
-  <div id="game" class="section" style="display:none;">
-    <h2>ゲーム進行</h2>
-    <div id="log"></div>
-    <button onclick="startDay()">昼のターン</button>
-    <button onclick="startNight()">夜のターン</button>
-    <button onclick="showSelect('処刑者を選択（なし可）', executePlayer, true)">処刑</button>
-    <div id="actions"></div>
-  </div>
+<div id="game" class="section" style="display:none;">
+  <h2>ゲーム進行</h2>
+  <div id="log"></div>
+  <button onclick="startDay()">昼のターン</button>
+  <button onclick="startNight()">夜のターン</button>
+  <div id="actions"></div>
+</div>
 
 <script>
 const rolePatterns = {
@@ -71,7 +67,9 @@ let deadPlayers = [];
 let pendingHunter = null;
 let lastExecuted = null;
 let pendingVictim = null;
+let roleIndexTracker = {}; // 役職切替用
 
+// 初期設定
 document.getElementById("playerCount").addEventListener("change", updatePattern);
 function updatePattern(){
   let count = document.getElementById("playerCount").value;
@@ -85,6 +83,7 @@ function updatePattern(){
 }
 updatePattern();
 
+// 役職セット
 function setRoles(){
   let count = document.getElementById("playerCount").value;
   let pattern = document.getElementById("pattern").value;
@@ -94,18 +93,38 @@ function setRoles(){
   let container = document.getElementById("players");
   container.innerHTML = "";
   currentRoles.forEach((r, i)=>{
+    roleIndexTracker[i] = 0;
     let div = document.createElement("div");
     div.className = "player";
-    div.innerHTML = `プレイヤー${i+1}: <button onclick="assignRole(${i})">役職を割り当て</button> <span id="p${i}"></span>`;
+    div.innerHTML = `
+      プレイヤー${i+1}:
+      <button onclick="cycleRole(${i})">切替</button>
+      <button onclick="confirmRole(${i})">確定</button>
+      <span id="p${i}">未選択</span>
+    `;
     container.appendChild(div);
   });
 }
 
-function assignRole(i){
-  if(currentRoles.length===0){ alert("役職はすべて割り当て済みです"); return; }
-  let role = currentRoles.shift();
-  assignedRoles[i] = role;
-  document.getElementById("p"+i).textContent = role;
+// 役職切替
+function cycleRole(i){
+  let available = rolePatterns[document.getElementById("playerCount").value][document.getElementById("pattern").value];
+  roleIndexTracker[i] = (roleIndexTracker[i] + 1) % available.length;
+  document.getElementById("p"+i).textContent = available[roleIndexTracker[i]];
+}
+
+// 役職確定
+function confirmRole(i){
+  let available = rolePatterns[document.getElementById("playerCount").value][document.getElementById("pattern").value];
+  let role = available[roleIndexTracker[i]];
+  if(currentRoles.includes(role)){
+    assignedRoles[i] = role;
+    currentRoles.splice(currentRoles.indexOf(role),1);
+    document.getElementById("p"+i).textContent = role + " ✅";
+    log(`プレイヤー${i+1} に ${role} を割り当てました`);
+  } else {
+    alert("その役職はすでに割り当てられています");
+  }
 }
 
 function confirmRoles(){
@@ -125,7 +144,7 @@ function log(msg){
 
 // --- 昼の処理 ---
 function startDay(){
-  log("☀️ 昼のターンです。昨夜の犠牲者を発表してください。");
+  log("🌅 昼のターンです。昨夜の犠牲者を発表してください。");
   if(pendingHunter!==null){
     log("ハンターが夜に死亡していました。道連れ対象を選んでください。");
     showSelect("ハンターの道連れ対象", hunterKill, true);
@@ -168,7 +187,7 @@ function processWerewolf(){
 function processSeer(){
   const seerIndex = assignedRoles.findIndex(r=>r==="占い師");
   if(seerIndex!==-1 && !deadPlayers.includes(seerIndex)){
-    showSelect("占い師の占い対象（なし可、自分以外）", target=>{
+    showSelect("占い師の占い対象（なし可）", target=>{
       if(target!==null){
         const role = assignedRoles[target];
         if(role==="人狼"){
@@ -183,7 +202,7 @@ function processSeer(){
         log("占い師は占いを行いませんでした。");
       }
       processMedium();
-    }, true, seerIndex);
+    }, true);
   } else {
     processMedium();
   }
@@ -192,8 +211,7 @@ function processSeer(){
 function processMedium(){
   const medIndex = assignedRoles.findIndex(r=>r==="霊媒師");
   if(medIndex!==-1 && !deadPlayers.includes(medIndex) && lastExecuted!==null){
-    log("☠️ 霊媒師の能力を使用します。");
-    showSelect("霊媒師の確認（なし可）", ()=>{
+    showSelect("霊媒師が確認（なし可）", target=>{
       log(`☠️ 霊媒師の結果: 前日の処刑者 プレイヤー${lastExecuted+1} は ${assignedRoles[lastExecuted]}`);
       processKnight();
     }, true);
@@ -205,7 +223,7 @@ function processMedium(){
 function processKnight(){
   const knightIndex = assignedRoles.findIndex(r=>r==="騎士");
   if(knightIndex!==-1 && !deadPlayers.includes(knightIndex)){
-    showSelect("騎士の護衛対象（なし可、自分以外）", target=>{
+    showSelect("騎士の護衛対象（なし可）", target=>{
       if(target!==null && pendingVictim===target){
         log(`🛡 騎士がプレイヤー${target+1}を守ったため襲撃失敗！`);
         pendingVictim=null;
@@ -215,7 +233,7 @@ function processKnight(){
         log("騎士は護衛を行いませんでした");
       }
       resolveNight();
-    }, true, knightIndex);
+    }, true);
   } else {
     resolveNight();
   }
@@ -240,7 +258,7 @@ function executePlayer(player){
   if(player !== null){
     deadPlayers.push(player);
     lastExecuted = player;
-    log(`⚖️ 処刑されたのは プレイヤー${player+1} (${assignedRoles[player]})`);
+    log(`処刑されたのは プレイヤー${player+1} (${assignedRoles[player]})`);
     checkHunter(player,"execution");
   } else {
     log("今日は処刑者がいませんでした");
@@ -250,13 +268,13 @@ function executePlayer(player){
 }
 
 // --- 共通UI ---
-function showSelect(label, callback, allowNone=false, exclude=null){
+function showSelect(label, callback, allowNone=false){
   let actionDiv = document.getElementById("actions");
   actionDiv.innerHTML = `<p>${label}</p>`;
   let sel = document.createElement("select");
   sel.innerHTML = `<option value="">${allowNone?"なし":"選択してください"}</option>`;
   assignedRoles.forEach((r,i)=>{
-    if(!deadPlayers.includes(i) && i!==exclude){
+    if(!deadPlayers.includes(i)){
       sel.innerHTML += `<option value="${i}">プレイヤー${i+1} (${r})</option>`;
     }
   });
@@ -287,7 +305,7 @@ function checkHunter(player,cause){
 function hunterKill(target){
   if(target!==null){
     deadPlayers.push(target);
-    log(`🎯 ハンターの道連れで プレイヤー${target+1} (${assignedRoles[target]}) が死亡しました。`);
+    log(`ハンターの道連れで プレイヤー${target+1} (${assignedRoles[target]}) が死亡しました。`);
   } else {
     log("ハンターは誰も道連れにしませんでした。");
   }
